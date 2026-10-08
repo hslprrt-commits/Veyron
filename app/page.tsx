@@ -24,12 +24,6 @@ const steps = [
   { title: "انشر اللوحة", text: "أرسل لوحة التذاكر وابدأ استقبال الطلبات." },
 ];
 
-const faqs = [
-  { q: "كم تذكرة يقدر العضو يفتح؟", a: "تحدد أنت الحد من الإعدادات لمنع الإزعاج." },
-  { q: "هل أقدر أخصص رسائل البوت؟", a: "نعم، العناوين والألوان والأزرار قابلة للتعديل." },
-  { q: "وين تنحفظ سجلات المحادثات؟", a: "ترسل لقناة السجلات التي تحددها عند الإغلاق." },
-];
-
 const container = "mx-auto w-full max-w-[1100px] px-[18px]";
 const grad =
   "bg-gradient-to-l from-violet-600 to-cyan-500 dark:from-violet-400 dark:to-cyan-400 bg-clip-text text-transparent";
@@ -57,7 +51,6 @@ export default function Page() {
           </a>
           <ul className={`hidden gap-6 text-[15px] md:flex ${muted}`}>
             <li><a href="#features" className="hover:text-violet-500">المميزات</a></li>
-            <li><a href="#faq" className="hover:text-violet-500">الأسئلة</a></li>
           </ul>
           <a href={INVITE_URL} className={`${btnPrimary} !px-5 !py-2.5 text-sm`}>أضف البوت</a>
         </div>
@@ -111,23 +104,6 @@ export default function Page() {
               </li>
             ))}
           </ol>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="scroll-mt-16 py-14">
-        <div className={`${container} max-w-[720px]`}>
-          <h2 className="mb-8 text-center text-[clamp(26px,4vw,38px)] font-extrabold">
-            الأسئلة <span className={grad}>الشائعة</span>
-          </h2>
-          <div className="space-y-2.5">
-            {faqs.map((f) => (
-              <details key={f.q} className={`${card} !p-4`}>
-                <summary className="cursor-pointer font-bold">{f.q}</summary>
-                <p className={`mt-2 ${muted}`}>{f.a}</p>
-              </details>
-            ))}
-          </div>
         </div>
       </section>
 
