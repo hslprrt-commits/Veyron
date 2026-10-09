@@ -1,609 +1,599 @@
-
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { IBM_Plex_Sans_Arabic } from "next/font/google";
 
-const features = [
+const font = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic", "latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+/* ───────────── Types ───────────── */
+
+type Status = "open" | "pending" | "closed";
+type Priority = "high" | "normal" | "low";
+
+type Msg = {
+  id: number;
+  from: "user" | "staff";
+  author: string;
+  text: string;
+  time: string;
+};
+
+type Ticket = {
+  id: number;
+  subject: string;
+  user: string;
+  category: string;
+  status: Status;
+  priority: Priority;
+  assignee: string | null;
+  opened: string;
+  messages: Msg[];
+};
+
+/* ───────────── Mock data (replace with your API) ───────────── */
+
+const STAFF = ["ريان", "سلمى", "فهد"];
+const ME = "ريان"; // الموظف الحالي: خذه من الجلسة لاحقاً
+const MAX_REPLY = 2000; // حد رسالة ديسكورد
+
+const INITIAL: Ticket[] = [
   {
-    icon: "◈",
-    number: "01",
-    title: "نظام تذاكر منظم",
-    description:
-      "تجربة مصممة لترتيب طلبات الأعضاء وجمع محادثات الدعم في مكان واضح.",
-    tag: "Ticket Management",
+    id: 1042,
+    subject: "لا أستطيع الدخول إلى روم الصوت",
+    user: "mohammed_x",
+    category: "دعم فني",
+    status: "open",
+    priority: "high",
+    assignee: null,
+    opened: "قبل 6 دقائق",
+    messages: [
+      { id: 1, from: "user", author: "mohammed_x", text: "السلام عليكم، كل ما أدخل روم الصوت يطلع لي خطأ في الصلاحيات.", time: "10:42" },
+      { id: 2, from: "user", author: "mohammed_x", text: "جربت أطلع وأدخل مرة ثانية بدون فايدة.", time: "10:44" },
+    ],
   },
   {
-    icon: "⌘",
-    number: "02",
-    title: "فريق الدعم",
-    description:
-      "تصميم يراعي توزيع المسؤوليات وتسهيل متابعة الطلبات بين أعضاء الفريق.",
-    tag: "Support Team",
+    id: 1041,
+    subject: "طلب انضمام لفريق الإشراف",
+    user: "layla.dev",
+    category: "طلب انضمام",
+    status: "pending",
+    priority: "normal",
+    assignee: "سلمى",
+    opened: "قبل ساعة",
+    messages: [
+      { id: 1, from: "user", author: "layla.dev", text: "أرغب بالانضمام للإشراف، عندي خبرة سنتين في سيرفرات مشابهة.", time: "09:30" },
+      { id: 2, from: "staff", author: "سلمى", text: "أهلاً ليلى، أرسلي لنا أمثلة على سيرفرات أشرفتِ عليها.", time: "09:41" },
+    ],
   },
   {
-    icon: "▤",
-    number: "03",
-    title: "سجل المحادثات",
-    description:
-      "التخطيط لأرشفة المحادثات حتى تكون تفاصيل الطلبات قابلة للمراجعة.",
-    tag: "Ticket History",
+    id: 1040,
+    subject: "إبلاغ عن عضو يرسل روابط مشبوهة",
+    user: "nora_92",
+    category: "إبلاغ",
+    status: "open",
+    priority: "high",
+    assignee: "فهد",
+    opened: "قبل 3 ساعات",
+    messages: [
+      { id: 1, from: "user", author: "nora_92", text: "في عضو يرسل روابط في الخاص باسم هدايا نيترو.", time: "07:12" },
+      { id: 2, from: "staff", author: "فهد", text: "شكراً على البلاغ، هل عندك لقطة شاشة للرسالة؟", time: "07:20" },
+      { id: 3, from: "user", author: "nora_92", text: "إي، أرفقتها الحين.", time: "07:25" },
+    ],
   },
   {
-    icon: "◎",
-    number: "04",
-    title: "تجربة عربية",
-    description:
-      "واجهة عربية باتجاه RTL مع التوجه إلى دعم اللغة الإنجليزية أيضاً.",
-    tag: "Arabic First",
+    id: 1039,
+    subject: "استفسار عن رتبة الداعمين",
+    user: "sultan",
+    category: "استفسار",
+    status: "closed",
+    priority: "low",
+    assignee: "ريان",
+    opened: "أمس",
+    messages: [
+      { id: 1, from: "user", author: "sultan", text: "متى تنضاف رتبة الداعمين بعد الاشتراك؟", time: "أمس" },
+      { id: 2, from: "staff", author: "ريان", text: "تنضاف خلال دقائق، وإذا تأخرت افتح تذكرة جديدة.", time: "أمس" },
+    ],
   },
   {
-    icon: "⌁",
-    number: "05",
-    title: "إعدادات مرنة",
-    description:
-      "تصور لإعداد نظام الدعم بما يتناسب مع احتياجات كل سيرفر.",
-    tag: "Configuration",
-  },
-  {
-    icon: "▦",
-    number: "06",
-    title: "لوحة تحكم",
-    description:
-      "واجهة مستقبلية مخطط لها لجمع إعدادات المشروع ومعلوماته في مكان واحد.",
-    tag: "Dashboard",
+    id: 1038,
+    subject: "البوت لا يرد على الأوامر",
+    user: "hadi_k",
+    category: "دعم فني",
+    status: "pending",
+    priority: "normal",
+    assignee: "ريان",
+    opened: "أمس",
+    messages: [
+      { id: 1, from: "user", author: "hadi_k", text: "الأوامر ما تشتغل عندي في قناة الأوامر.", time: "أمس" },
+      { id: 2, from: "staff", author: "ريان", text: "ممكن تكتب لي الأمر اللي جربته بالضبط؟", time: "أمس" },
+    ],
   },
 ];
 
-const steps = [
-  {
-    number: "01",
-    title: "جهّز نظام الدعم",
-    text: "تحديد قنوات التذاكر وصلاحيات فريق الدعم بعد تنفيذ البوت.",
-  },
-  {
-    number: "02",
-    title: "استقبل الطلبات",
-    text: "يبدأ العضو طلب المساعدة من خلال نظام التذاكر المخطط له.",
-  },
-  {
-    number: "03",
-    title: "تابع الطلب",
-    text: "يتابع فريق الدعم الطلب حتى إغلاقه وفق الوظائف التي ستُنفّذ.",
-  },
-];
+/* ───────────── Static maps (full class strings so Tailwind keeps them) ───────────── */
 
-const faqs = [
-  {
-    q: "شنو هو Veyron؟",
-    a: "Veyron مشروع بوت لإدارة تذاكر الدعم في Discord، هدفه تنظيم طلبات الأعضاء وتسهيل عمل فريق الدعم.",
-  },
-  {
-    q: "هل البوت جاهز حالياً؟",
-    a: "لا، البوت قيد التطوير. الموقع يعرض هوية المشروع ومميزاته المخطط لها، والأزرار التوضيحية لا تنشئ تذاكر حقيقية.",
-  },
-  {
-    q: "هل راح يدعم اللغة العربية؟",
-    a: "الواجهة الحالية عربية ومتوافقة مع اتجاه الكتابة من اليمين إلى اليسار، ودعم العربية والإنجليزية من أهداف المشروع.",
-  },
-  {
-    q: "هل لوحة التحكم حقيقية؟",
-    a: "لا، اللوحة المعروضة في الصفحة معاينة بصرية فقط. تحتاج اللوحة الحقيقية إلى بناء الواجهة الخلفية وربطها بالبوت.",
-  },
-];
+const STATUS_LABEL: Record<Status, string> = {
+  open: "مفتوحة",
+  pending: "معلّقة",
+  closed: "مغلقة",
+};
 
-function Arrow({ diagonal = false }: { diagonal?: boolean }) {
+const STATUS_STYLE: Record<Status, string> = {
+  open: "bg-[#E8E5FF] text-[#3B2FD0]",
+  pending: "bg-[#FFF0D6] text-[#8A5A00]",
+  closed: "bg-[#E4EBE7] text-[#3F5F50]",
+};
+
+const PRIORITY_LABEL: Record<Priority, string> = {
+  high: "عالية",
+  normal: "عادية",
+  low: "منخفضة",
+};
+
+const PRIORITY_STRIPE: Record<Priority, string> = {
+  high: "border-s-[#E5484D]",
+  normal: "border-s-[#B9B6D9]",
+  low: "border-s-[#DAD8EA]",
+};
+
+const AVATAR_COLORS = ["#5B4BFF", "#1F9D6B", "#D9822B", "#C2397F", "#2B7FD9"];
+
+const NAV = ["التذاكر", "الأنواع والأقسام", "الردود الجاهزة", "فريق الدعم", "الإعدادات"];
+
+/* ───────────── Helpers ───────────── */
+
+function avatarColor(name: string) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function nowHHMM() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function lastFromUser(t: Ticket) {
+  return t.messages.length > 0 && t.messages[t.messages.length - 1].from === "user";
+}
+
+function Avatar({ name, size = 32 }: { name: string; size?: number }) {
   return (
-    <span aria-hidden="true" className="inline-block transition-transform group-hover:-translate-x-1">
-      {diagonal ? "↗" : "←"}
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
+      style={{
+        width: size,
+        height: size,
+        background: avatarColor(name),
+        fontSize: size * 0.4,
+      }}
+      aria-hidden
+    >
+      {name.trim().charAt(0).toUpperCase()}
     </span>
   );
 }
 
-function Logo() {
-  return (
-    <a href="#top" className="group flex shrink-0 items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-violet-300/20 bg-gradient-to-br from-violet-400/25 to-indigo-500/10 text-lg font-black text-white shadow-lg shadow-violet-950/30 transition group-hover:border-violet-300/50">
-        V
-      </span>
-      <span className="text-xl font-extrabold tracking-tight text-white">
-        Veyron<span className="text-violet-400">.</span>
-      </span>
-    </a>
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#5B4BFF]";
+
+/* ───────────── Page ───────────── */
+
+export default function DashboardPage() {
+  const [tickets, setTickets] = useState<Ticket[]>(INITIAL);
+  const [selectedId, setSelectedId] = useState<number | null>(INITIAL[0].id);
+  const [filter, setFilter] = useState<Status | "all">("all");
+  const [query, setQuery] = useState("");
+  // مسودة منفصلة لكل تذكرة حتى لا يُرسل رد إلى تذكرة خاطئة
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const selected = tickets.find((t) => t.id === selectedId) ?? null;
+  const draft = selected ? drafts[selected.id] ?? "" : "";
+
+  const counts = useMemo(
+    () => ({
+      all: tickets.length,
+      open: tickets.filter((t) => t.status === "open").length,
+      pending: tickets.filter((t) => t.status === "pending").length,
+      closed: tickets.filter((t) => t.status === "closed").length,
+    }),
+    [tickets]
   );
-}
 
-function SectionTitle({
-  label,
-  title,
-  description,
-}: {
-  label: string;
-  title: string;
-  description: string;
-}) {
+  const awaitingStaff = tickets.filter((t) => t.status !== "closed" && lastFromUser(t)).length;
+  const unassigned = tickets.filter((t) => t.status !== "closed" && !t.assignee).length;
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase().replace(/^#/, "");
+    return tickets.filter((t) => {
+      if (filter !== "all" && t.status !== filter) return false;
+      if (!q) return true;
+      return (
+        t.subject.toLowerCase().includes(q) ||
+        t.user.toLowerCase().includes(q) ||
+        String(t.id).includes(q)
+      );
+    });
+  }, [tickets, filter, query]);
+
+  // تمرير حاوية الرسائل فقط (scrollIntoView كان يحرّك الصفحة كلها)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [selectedId, selected?.messages.length]);
+
+  function update(id: number, patch: Partial<Ticket>) {
+    setTickets((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function setDraft(value: string) {
+    if (!selected) return;
+    const id = selected.id;
+    setDrafts((prev) => ({ ...prev, [id]: value }));
+  }
+
+  function send() {
+    if (!selected || selected.status === "closed") return;
+    const text = draft.trim();
+    if (!text) return;
+    const id = selected.id;
+    const time = nowHHMM();
+
+    // تحديث وظيفي: يقرأ أحدث حالة بدل نسخة قديمة من الإغلاق (closure)
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id !== id || t.status === "closed") return t;
+        const nextId = t.messages.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        return {
+          ...t,
+          assignee: t.assignee ?? ME,
+          status: "pending",
+          messages: [...t.messages, { id: nextId, from: "staff", author: ME, text, time }],
+        };
+      })
+    );
+    setDrafts((prev) => ({ ...prev, [id]: "" }));
+  }
+
+  const tabs: { key: Status | "all"; label: string }[] = [
+    { key: "all", label: "الكل" },
+    { key: "open", label: "مفتوحة" },
+    { key: "pending", label: "معلّقة" },
+    { key: "closed", label: "مغلقة" },
+  ];
+
   return (
-    <div className="mx-auto mb-14 max-w-2xl text-center">
-      <span className="inline-flex items-center gap-2 rounded-full border border-violet-400/15 bg-violet-400/[0.06] px-4 py-2 text-xs font-semibold text-violet-200">
-        <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-        {label}
-      </span>
-      <h2 className="mt-5 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
-        {title}
-      </h2>
-      <p className="mx-auto mt-5 max-w-xl text-sm leading-8 text-zinc-400 sm:text-base">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function DiscordPreview() {
-  const [selectedTab, setSelectedTab] = useState("ticket");
-
-  return (
-    <div className="relative mx-auto w-full max-w-[580px]">
-      <div className="absolute -inset-8 rounded-[45px] bg-violet-600/[0.13] blur-[75px]" />
-
-      <div className="relative overflow-hidden rounded-[24px] border border-white/[0.11] bg-[#11121a] shadow-2xl shadow-black/50">
-        <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.018] px-4 py-4 sm:px-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15 font-black text-indigo-200">
-              V
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">Veyron Studio</p>
-              <p className="mt-0.5 text-[10px] text-zinc-500">
-                Discord ticket preview
-              </p>
-            </div>
-          </div>
-          <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.07] px-3 py-1.5 text-[10px] font-semibold text-amber-300">
-            DEMO
+    <div
+      dir="rtl"
+      className={`${font.className} min-h-screen bg-[#F3F3F9] text-[#1B1D3A] lg:grid lg:grid-cols-[232px_minmax(0,1fr)] xl:h-screen xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden`}
+    >
+      {/* ─── Sidebar ─── */}
+      <aside className="hidden flex-col bg-[#1B1D3A] px-4 py-6 text-[#C9CAE6] lg:flex">
+        <div className="mb-8 flex items-center gap-3 px-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#5B4BFF] text-lg font-bold text-white">
+            V
           </span>
+          <span className="text-lg font-bold text-white">Veyron</span>
         </div>
 
-        <div className="grid grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[145px_minmax(0,1fr)]">
-          <aside className="border-l border-white/[0.06] bg-black/10 p-2 sm:p-3">
-            <p className="mb-3 px-2 pt-2 text-[9px] font-bold tracking-widest text-zinc-600">
-              SERVER
-            </p>
-            <div className="mb-4 flex items-center gap-2 rounded-lg bg-white/[0.035] p-2">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20 text-xs text-indigo-200">
-                V
-              </span>
-              <span className="truncate text-[10px] font-semibold text-zinc-300">
-                Community
-              </span>
-            </div>
-            <p className="mb-2 px-2 text-[9px] text-zinc-600">TEXT CHANNELS</p>
+        <nav className="flex flex-col gap-1 text-sm" aria-label="التنقل الرئيسي">
+          {NAV.map((label, i) => (
+            <a
+              key={label}
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              aria-current={i === 0 ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#8F84FF] ${
+                i === 0 ? "bg-white/10 font-medium text-white" : "hover:bg-white/5"
+              }`}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="mt-auto flex items-center gap-3 rounded-xl bg-white/5 p-3">
+          <Avatar name={ME} />
+          <div className="leading-tight">
+            <div className="text-sm font-semibold text-white">{ME}</div>
+            <div className="text-xs text-[#9FA1C8]">مشرف</div>
+          </div>
+        </div>
+      </aside>
+
+      {/* ─── Main ─── */}
+      <main className="flex min-w-0 flex-col xl:min-h-0">
+        <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[#E1E1EE] bg-white px-6 py-4">
+          <h1 className="text-xl font-bold">التذاكر</h1>
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             {[
-              ["#", "general"],
-              ["#", "announcements"],
-              ["#", "support"],
-            ].map(([icon, name]) => (
-              <div
-                key={name}
-                className={`mb-1 flex items-center gap-1.5 rounded-lg px-2 py-2 text-[9px] sm:text-[10px] ${
-                  name === "support"
-                    ? "bg-violet-500/15 text-violet-200"
-                    : "text-zinc-500"
-                }`}
-              >
-                <span>{icon}</span>
-                <span className="truncate">{name}</span>
+              { label: "بانتظار رد الموظف", value: awaitingStaff },
+              { label: "بدون مستلم", value: unassigned },
+              { label: "مفتوحة", value: counts.open },
+            ].map((m) => (
+              <div key={m.label} className="flex items-baseline gap-2">
+                <dt className="order-2 text-[#5E6082]">{m.label}</dt>
+                <dd className="order-1 text-lg font-bold tabular-nums">{m.value}</dd>
               </div>
             ))}
-            <p className="mb-2 mt-5 px-2 text-[9px] text-zinc-600">TICKETS</p>
-            <div className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-[9px] text-zinc-400 sm:text-[10px]">
-              <span className="text-emerald-400">#</span>
-              <span className="truncate">ticket-demo</span>
-            </div>
-          </aside>
-
-          <div className="min-w-0 p-3 sm:p-5">
-            <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-4">
-              <div>
-                <p className="text-sm font-bold text-white"># ticket-demo</p>
-                <p className="mt-1 text-[10px] text-zinc-500">
-                  Support request preview
-                </p>
-              </div>
-              <span className="rounded-lg border border-emerald-400/15 bg-emerald-400/[0.07] px-2 py-1.5 text-[9px] text-emerald-300">
-                Open
-              </span>
-            </div>
-
-            <div className="mt-5 flex items-start gap-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20 text-xs font-bold text-indigo-200">
-                V
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-white">Veyron</span>
-                  <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[9px] text-indigo-200">
-                    BOT PREVIEW
-                  </span>
-                </div>
-                <div className="mt-3 rounded-xl border border-violet-400/20 bg-gradient-to-br from-violet-500/[0.08] to-transparent p-3 sm:p-4">
-                  <div className="h-1 w-12 rounded-full bg-violet-400" />
-                  <h3 className="mt-3 text-sm font-bold text-white sm:text-base">
-                    مركز الدعم
-                  </h3>
-                  <p className="mt-2 text-[11px] leading-6 text-zinc-400 sm:text-xs">
-                    أهلاً بيك! هذه معاينة لشكل رسالة التكت المستقبلية. فريق
-                    الدعم راح يساعدك بعد تنفيذ البوت.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTab("ticket")}
-                      className={`rounded-lg px-3 py-2 text-[10px] font-semibold transition ${
-                        selectedTab === "ticket"
-                          ? "bg-violet-500 text-white"
-                          : "border border-white/10 bg-white/[0.04] text-zinc-300"
-                      }`}
-                    >
-                      فتح تذكرة
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTab("help")}
-                      className={`rounded-lg px-3 py-2 text-[10px] font-semibold transition ${
-                        selectedTab === "help"
-                          ? "bg-violet-500 text-white"
-                          : "border border-white/10 bg-white/[0.04] text-zinc-300"
-                      }`}
-                    >
-                      معلومات الدعم
-                    </button>
-                  </div>
-                  <p className="mt-3 rounded-lg bg-black/20 px-3 py-2 text-[10px] leading-5 text-zinc-500">
-                    {selectedTab === "ticket"
-                      ? "نموذج توضيحي لزر فتح التذكرة — غير مربوط بـ Discord."
-                      : "نموذج توضيحي لمعلومات الدعم — لا توجد خدمة فعلية مرتبطة."}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-sm text-emerald-300">
-                ✓
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-zinc-200">
-                  واجهة منظمة
-                </p>
-                <p className="mt-1 text-[10px] text-zinc-500">
-                  تصور بصري للمنتج المستقبلي
-                </p>
-              </div>
-              <span className="mr-auto text-[9px] text-zinc-600">PREVIEW</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="absolute -bottom-5 -left-1 hidden rounded-xl border border-white/10 bg-[#171722] px-4 py-3 shadow-xl sm:block sm:-left-5">
-        <p className="text-[10px] text-zinc-500">Designed for</p>
-        <p className="mt-1 text-xs font-bold text-white">Discord Support</p>
-      </div>
-    </div>
-  );
-}
-
-export default function HomePage() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [openQuestion, setOpenQuestion] = useState<number | null>(0);
-
-  return (
-    <main
-      id="top"
-      dir="rtl"
-      className="min-h-screen overflow-hidden bg-[#080910] text-white selection:bg-violet-500/30"
-    >
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-64 right-[8%] h-[500px] w-[500px] rounded-full bg-violet-600/[0.10] blur-[140px]" />
-        <div className="absolute top-[1100px] -left-64 h-[500px] w-[500px] rounded-full bg-indigo-600/[0.07] blur-[140px]" />
-      </div>
-
-      <div className="relative">
-        <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#080910]/85 backdrop-blur-2xl">
-          <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
-            <Logo />
-
-            <nav className="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
-              <a href="#features" className="transition hover:text-white">
-                المميزات
-              </a>
-              <a href="#how-it-works" className="transition hover:text-white">
-                كيف يعمل؟
-              </a>
-              <a href="#faq" className="transition hover:text-white">
-                الأسئلة الشائعة
-              </a>
-            </nav>
-
-            <a
-              href="#status"
-              className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold transition hover:border-violet-400/30 hover:bg-violet-500/10 sm:inline-flex"
-            >
-              حالة المشروع <Arrow diagonal />
-            </a>
-
-            <button
-              type="button"
-              aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"}
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 text-lg text-zinc-300 md:hidden"
-            >
-              {menuOpen ? "×" : "☰"}
-            </button>
-          </div>
-
-          {menuOpen && (
-            <nav className="border-t border-white/[0.06] px-5 py-4 md:hidden">
-              {[
-                ["المميزات", "#features"],
-                ["كيف يعمل؟", "#how-it-works"],
-                ["الأسئلة الشائعة", "#faq"],
-                ["حالة المشروع", "#status"],
-              ].map(([label, href]) => (
-                <a
-                  key={href}
-                  href={href}
-                  onClick={() => setMenuOpen(false)}
-                  className="block rounded-lg px-3 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]"
-                >
-                  {label}
-                </a>
-              ))}
-            </nav>
-          )}
+          </dl>
         </header>
 
-        <section className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 pb-24 pt-16 sm:px-8 sm:pb-32 sm:pt-24 lg:grid-cols-2 lg:gap-12 lg:pt-28">
-          <div>
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/[0.07] px-4 py-2 text-xs font-medium text-violet-200">
-              <span className="h-2 w-2 rounded-full bg-violet-400" />
-              مشروع قيد التطوير
-              <span className="text-violet-400/50">/</span>
-              Discord Ticket System
-            </div>
-
-            <h1 className="max-w-2xl text-4xl font-black leading-[1.35] tracking-tight sm:text-5xl sm:leading-[1.25] lg:text-[62px]">
-              نظام تذاكر Discord
-              <br />
-              <span className="bg-gradient-to-l from-violet-300 via-indigo-300 to-white bg-clip-text text-transparent">
-                بشكل احترافي.
-              </span>
-            </h1>
-
-            <p className="mt-7 max-w-xl text-base leading-8 text-zinc-400 sm:text-lg sm:leading-9">
-              إدارة تذاكر الدعم، تنظيم فريقك، ومتابعة طلبات أعضاء سيرفرك من
-              خلال تجربة بسيطة وسريعة مع Veyron.
-            </p>
-
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <a
-                href="#status"
-                className="group inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-violet-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-violet-950/40 transition hover:-translate-y-0.5 hover:bg-violet-400"
-              >
-                تابع المشروع <Arrow diagonal />
-              </a>
-              <a
-                href="#features"
-                className="group inline-flex min-h-12 items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:border-violet-400/30 hover:bg-violet-500/[0.06]"
-              >
-                استكشف المميزات <Arrow />
-              </a>
-            </div>
-
-            <div className="mt-9 flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-zinc-500">
-              <span className="flex items-center gap-2">
-                <span className="text-violet-300">✓</span>
-                تصميم عربي RTL
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="text-violet-300">✓</span>
-                تجربة متجاوبة
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="text-violet-300">✓</span>
-                مخصص لـ Discord
-              </span>
-            </div>
-          </div>
-
-          <div className="px-1 pb-7 pt-3 sm:px-5 lg:px-0">
-            <DiscordPreview />
-          </div>
-        </section>
-
-        <section id="status" className="border-y border-white/[0.06] bg-white/[0.018]">
-          <div className="mx-auto grid max-w-7xl gap-4 px-5 py-7 sm:grid-cols-3 sm:px-8">
-            {[
-              ["حالة المشروع", "قيد التطوير", "البوت لم يُنفّذ بعد"],
-              ["واجهة التكت", "معاينة بصرية", "ليست مرتبطة بـ Discord"],
-              ["لوحة التحكم", "ضمن الخطة", "تحتاج إلى بناء وربط"],
-            ].map(([label, value, detail]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-white/[0.06] bg-[#0b0c14]/70 px-5 py-4 transition hover:border-violet-400/20"
-              >
-                <p className="text-xs text-zinc-500">{label}</p>
-                <p className="mt-2 text-lg font-bold text-zinc-100">{value}</p>
-                <p className="mt-1 text-xs text-zinc-500">{detail}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="features" className="mx-auto max-w-7xl px-5 py-24 sm:px-8 sm:py-28">
-          <SectionTitle
-            label="مميزات Veyron"
-            title="دعم أوضح. تنظيم أفضل."
-            description="تصوّر للمميزات التي سيُبنى عليها نظام دعم منظم لسيرفر Discord، مع توضيح ما هو مخطط له."
-          />
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
-              <article
-                key={feature.number}
-                className="group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 transition duration-300 hover:-translate-y-1 hover:border-violet-400/25 hover:bg-violet-500/[0.035] sm:p-7"
-              >
-                <div className="absolute -left-8 -top-8 h-28 w-28 rounded-full bg-violet-500/[0.04] blur-2xl transition group-hover:bg-violet-500/[0.12]" />
-                <div className="relative flex items-start justify-between">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-violet-400/15 bg-violet-500/[0.08] text-xl text-violet-300">
-                    {feature.icon}
-                  </div>
-                  <span className="font-mono text-xs text-zinc-700">
-                    {feature.number}
-                  </span>
-                </div>
-                <p className="mt-6 text-[10px] font-semibold uppercase tracking-widest text-violet-300/70">
-                  {feature.tag}
-                </p>
-                <h3 className="mt-2 text-lg font-bold text-zinc-100">
-                  {feature.title}
-                </h3>
-                <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  {feature.description}
-                </p>
-                <div className="mt-6 flex items-center gap-2 text-xs text-zinc-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400/70" />
-                  ضمن خطة التطوير
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section
-          id="how-it-works"
-          className="border-y border-white/[0.06] bg-white/[0.018]"
-        >
-          <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 sm:py-28">
-            <SectionTitle
-              label="طريقة العمل"
-              title="ثلاث خطوات لتجربة دعم أوضح"
-              description="هذه هي آلية العمل المستهدفة بعد بناء البوت وتنفيذ الوظائف وربطها بـ Discord."
-            />
-
-            <div className="grid gap-4 md:grid-cols-3">
-              {steps.map((item, index) => (
-                <article
-                  key={item.number}
-                  className="relative rounded-2xl border border-white/[0.07] bg-[#0b0c14] p-6 transition hover:border-violet-400/20 sm:p-8"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/10 font-mono text-sm font-bold text-violet-300">
-                      {item.number}
-                    </span>
-                    <span className="font-mono text-xs text-zinc-700">
-                      STEP 0{index + 1}
-                    </span>
-                  </div>
-                  <h3 className="mt-6 text-lg font-bold">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-7 text-zinc-400">
-                    {item.text}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="faq" className="mx-auto max-w-3xl px-5 py-24 sm:px-8 sm:py-28">
-          <SectionTitle
-            label="الأسئلة الشائعة"
-            title="خلّينا نوضح الصورة"
-            description="معلومات عن المشروع، المميزات المخطط لها، وحالة التنفيذ الحالية."
-          />
-
-          <div className="space-y-3">
-            {faqs.map((item, index) => {
-              const isOpen = openQuestion === index;
-
-              return (
-                <div
-                  key={item.q}
-                  className={`overflow-hidden rounded-xl border transition ${
-                    isOpen
-                      ? "border-violet-400/20 bg-violet-500/[0.035]"
-                      : "border-white/[0.07] bg-white/[0.02]"
-                  }`}
-                >
+        <div className="grid flex-1 grid-cols-1 xl:min-h-0 xl:grid-cols-[340px_minmax(0,1fr)_264px] xl:grid-rows-[minmax(0,1fr)]">
+          {/* ─── Queue ─── */}
+          <section
+            className="flex min-h-[320px] flex-col border-[#E1E1EE] bg-[#FAFAFD] xl:min-h-0 xl:border-e"
+            aria-label="قائمة التذاكر"
+          >
+            <div className="space-y-3 p-4">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="ابحث بالموضوع أو اسم العضو أو الرقم"
+                aria-label="بحث في التذاكر"
+                className="w-full rounded-lg border border-[#D6D6E8] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#8C8EB0] focus:border-[#5B4BFF] focus:ring-2 focus:ring-[#5B4BFF]/20"
+              />
+              <div className="flex gap-1 rounded-lg bg-[#ECECF6] p-1" role="group" aria-label="تصفية حسب الحالة">
+                {tabs.map((tab) => (
                   <button
+                    key={tab.key}
                     type="button"
-                    aria-expanded={isOpen}
-                    onClick={() => setOpenQuestion(isOpen ? null : index)}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-5 text-right"
+                    aria-pressed={filter === tab.key}
+                    onClick={() => setFilter(tab.key)}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${FOCUS} ${
+                      filter === tab.key
+                        ? "bg-white text-[#1B1D3A] shadow-sm"
+                        : "text-[#5E6082] hover:text-[#1B1D3A]"
+                    }`}
                   >
-                    <span className="text-sm font-semibold text-zinc-200 sm:text-base">
-                      {item.q}
-                    </span>
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] text-zinc-400">
-                      {isOpen ? "−" : "+"}
-                    </span>
+                    {tab.label}
+                    <span className="ms-1 tabular-nums text-[#8C8EB0]">{counts[tab.key]}</span>
                   </button>
-                  {isOpen && (
-                    <div className="px-5 pb-5">
-                      <p className="text-sm leading-8 text-zinc-400">
-                        {item.a}
-                      </p>
-                    </div>
+                ))}
+              </div>
+            </div>
+
+            <ul className="min-h-0 flex-1 divide-y divide-[#ECECF6] overflow-y-auto">
+              {visible.length === 0 && (
+                <li className="px-6 py-12 text-center text-sm text-[#5E6082]">
+                  لا توجد تذاكر مطابقة. غيّر الفلتر أو امسح البحث.
+                </li>
+              )}
+              {visible.map((t) => {
+                const active = t.id === selectedId;
+                const waiting = t.status !== "closed" && lastFromUser(t);
+                return (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(t.id)}
+                      aria-current={active ? "true" : undefined}
+                      className={`w-full border-s-4 px-4 py-3 text-start transition-colors focus-visible:-outline-offset-2 ${FOCUS} ${
+                        PRIORITY_STRIPE[t.priority]
+                      } ${active ? "bg-white" : "hover:bg-white/60"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-semibold">{t.subject}</span>
+                        {waiting && (
+                          <span
+                            role="img"
+                            aria-label="بانتظار رد الموظف"
+                            title="بانتظار رد الموظف"
+                            className="h-2 w-2 shrink-0 rounded-full bg-[#5B4BFF]"
+                          />
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-[#5E6082]">
+                        <span dir="ltr">#{t.id}</span>
+                        <span className="truncate">{t.user}</span>
+                        <span className="ms-auto shrink-0">{t.opened}</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_STYLE[t.status]}`}>
+                          {STATUS_LABEL[t.status]}
+                        </span>
+                        <span className="text-[#8C8EB0]">{t.category}</span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          {/* ─── Conversation ─── */}
+          <section className="flex min-h-[520px] min-w-0 flex-col bg-white xl:min-h-0" aria-label="المحادثة">
+            {!selected ? (
+              <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#5E6082]">
+                اختر تذكرة من القائمة لعرض المحادثة.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3 border-b border-[#ECECF6] px-6 py-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-base font-bold">{selected.subject}</h2>
+                    <p className="text-xs text-[#5E6082]">
+                      <span dir="ltr">#{selected.id}</span> · {selected.user} · {selected.category}
+                    </p>
+                  </div>
+                  {selected.status === "closed" ? (
+                    <button
+                      type="button"
+                      onClick={() => update(selected.id, { status: "open" })}
+                      className={`rounded-lg border border-[#D6D6E8] px-4 py-2 text-sm font-medium hover:bg-[#F3F3F9] ${FOCUS}`}
+                    >
+                      إعادة فتح التذكرة
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => update(selected.id, { status: "closed" })}
+                      className={`rounded-lg bg-[#1B1D3A] px-4 py-2 text-sm font-medium text-white hover:bg-[#2B2E57] focus-visible:outline-offset-2 ${FOCUS}`}
+                    >
+                      إغلاق التذكرة
+                    </button>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        </section>
 
-        <section className="mx-auto max-w-7xl px-5 pb-24 sm:px-8">
-          <div className="relative overflow-hidden rounded-3xl border border-violet-400/15 bg-gradient-to-l from-violet-500/[0.12] via-[#11111e] to-indigo-500/[0.07] px-6 py-12 text-center sm:px-12 sm:py-16">
-            <div className="pointer-events-none absolute -left-20 -top-32 h-64 w-64 rounded-full bg-violet-500/10 blur-[80px]" />
-            <div className="relative">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-500/10 text-2xl font-black text-violet-200">
-                V
-              </div>
-              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.25em] text-violet-300">
-                VEYRON PROJECT
-              </p>
-              <h2 className="mt-4 text-2xl font-black sm:text-4xl">
-                كل تجربة دعم ناجحة تبدأ بالتنظيم.
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-8 text-zinc-400 sm:text-base">
-                Veyron مشروع قيد التطوير، وهذه الصفحة تعرض تصوّراً لهويته
-                ومميزاته المستقبلية بكل وضوح.
-              </p>
-              <a
-                href="#status"
-                className="group mt-7 inline-flex items-center gap-3 rounded-xl bg-violet-500 px-6 py-3.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-violet-400"
-              >
-                حالة المشروع <Arrow diagonal />
-              </a>
-            </div>
-          </div>
-        </section>
+                <div
+                  ref={scrollRef}
+                  className="min-h-0 max-h-[60vh] flex-1 space-y-4 overflow-y-auto px-6 py-5 xl:max-h-none"
+                >
+                  {selected.messages.map((m) => {
+                    const staff = m.from === "staff";
+                    return (
+                      <div key={m.id} className={`flex items-end gap-3 ${staff ? "flex-row-reverse" : ""}`}>
+                        <Avatar name={m.author} size={28} />
+                        <div
+                          className={`max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                            staff
+                              ? "rounded-ee-sm bg-[#5B4BFF] text-white"
+                              : "rounded-es-sm bg-[#F0F0F8]"
+                          }`}
+                        >
+                          <div className={`mb-0.5 text-xs ${staff ? "text-white/75" : "text-[#5E6082]"}`}>
+                            {m.author} · {m.time}
+                          </div>
+                          {m.text}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-        <footer className="border-t border-white/[0.06]">
-          <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <Logo />
-            <p className="text-xs leading-6 text-zinc-600">
-              Veyron © {new Date().getFullYear()} — مشروع قيد التطوير.
-            </p>
-            <a
-              href="#top"
-              className="text-xs text-zinc-500 transition hover:text-white"
-            >
-              العودة للأعلى ↑
-            </a>
-          </div>
-        </footer>
-      </div>
-    </main>
+                <div className="border-t border-[#ECECF6] p-4">
+                  {selected.status === "closed" ? (
+                    <p className="rounded-lg bg-[#F3F3F9] px-4 py-3 text-center text-sm text-[#5E6082]">
+                      التذكرة مغلقة. أعد فتحها لإرسال رد.
+                    </p>
+                  ) : (
+                    <div className="flex items-end gap-3">
+                      <textarea
+                        value={draft}
+                        maxLength={MAX_REPLY}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.nativeEvent.isComposing) return;
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            send();
+                          }
+                        }}
+                        rows={2}
+                        placeholder="اكتب ردك هنا (Ctrl + Enter للإرسال)"
+                        aria-label="نص الرد"
+                        className="min-h-[52px] flex-1 resize-none rounded-lg border border-[#D6D6E8] px-3 py-2 text-sm outline-none placeholder:text-[#8C8EB0] focus:border-[#5B4BFF] focus:ring-2 focus:ring-[#5B4BFF]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={send}
+                        disabled={!draft.trim()}
+                        className={`rounded-lg bg-[#5B4BFF] px-5 py-3 text-sm font-semibold text-white hover:bg-[#4A3BE6] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-offset-2 ${FOCUS}`}
+                      >
+                        إرسال الرد
+                      </button>
+                    </div>
+                  )}
+                  {selected.status !== "closed" && draft.length > MAX_REPLY * 0.9 && (
+                    <p className="mt-2 text-xs text-[#8A5A00]" aria-live="polite">
+                      {draft.length} / {MAX_REPLY} حرف
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* ─── Details ─── */}
+          <aside
+            className="space-y-6 border-[#E1E1EE] bg-[#FAFAFD] p-5 xl:min-h-0 xl:overflow-y-auto xl:border-s"
+            aria-label="تفاصيل التذكرة"
+          >
+            {selected ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Avatar name={selected.user} size={40} />
+                  <div className="min-w-0 leading-tight">
+                    <div className="truncate text-sm font-semibold">{selected.user}</div>
+                    <div className="text-xs text-[#5E6082]">فتح التذكرة {selected.opened}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="assignee" className="mb-1.5 block text-xs font-medium text-[#5E6082]">
+                    المستلم
+                  </label>
+                  <select
+                    id="assignee"
+                    value={selected.assignee ?? ""}
+                    onChange={(e) => update(selected.id, { assignee: e.target.value || null })}
+                    className="w-full rounded-lg border border-[#D6D6E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#5B4BFF] focus:ring-2 focus:ring-[#5B4BFF]/20"
+                  >
+                    <option value="">بدون مستلم</option>
+                    {STAFF.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  {!selected.assignee && selected.status !== "closed" && (
+                    <button
+                      type="button"
+                      onClick={() => update(selected.id, { assignee: ME })}
+                      className={`mt-2 text-xs font-medium text-[#3B2FD0] underline-offset-2 hover:underline ${FOCUS}`}
+                    >
+                      استلام التذكرة
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="priority" className="mb-1.5 block text-xs font-medium text-[#5E6082]">
+                    الأولوية
+                  </label>
+                  <select
+                    id="priority"
+                    value={selected.priority}
+                    onChange={(e) => update(selected.id, { priority: e.target.value as Priority })}
+                    className="w-full rounded-lg border border-[#D6D6E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#5B4BFF] focus:ring-2 focus:ring-[#5B4BFF]/20"
+                  >
+                    {(Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <dl className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-[#5E6082]">الحالة</dt>
+                    <dd>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[selected.status]}`}>
+                        {STATUS_LABEL[selected.status]}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[#5E6082]">القسم</dt>
+                    <dd>{selected.category}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[#5E6082]">عدد الرسائل</dt>
+                    <dd className="tabular-nums">{selected.messages.length}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : (
+              <p className="text-sm text-[#5E6082]">لا توجد تذكرة محددة.</p>
+            )}
+          </aside>
+        </div>
+      </main>
+    </div>
   );
 }
-
